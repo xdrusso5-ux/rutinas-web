@@ -504,6 +504,8 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     alert("PIN actualizado");
   }
 
+  console.log("prueba deploy");
+
   function toggleTareaExtra(tarea: string) {
     setTareasExtra((prev) =>
       prev.includes(tarea) ? prev.filter((t) => t !== tarea) : [...prev, tarea]
