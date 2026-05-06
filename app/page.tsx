@@ -121,6 +121,11 @@ export default function App() {
   const [tema, setTema] = useState("oscuro");
   const [personaHistorial, setPersonaHistorial] = useState("Sandra");
 
+  const hoyInput = new Date().toISOString().split("T")[0];
+  const [fechaEvaluacion, setFechaEvaluacion] = useState(hoyInput);
+  const [fechaSemanaHistorial, setFechaSemanaHistorial] = useState(hoyInput);
+  const [fechaMesHistorial, setFechaMesHistorial] = useState(hoyInput);
+
   const [pinManuel, setPinManuel] = useState("1234");
   const [pinIntroducido, setPinIntroducido] = useState("");
   const [manuelDesbloqueado, setManuelDesbloqueado] = useState(false);
@@ -256,7 +261,7 @@ export default function App() {
     extra += tareasExtra.length;
 
     const total = Math.round(base * multiTurno * multiPuesto + extra);
-    return Math.max(0, Math.min(total, 25));
+    return Math.max(0, total);
   }
 
   useEffect(() => {
@@ -302,8 +307,8 @@ export default function App() {
     tareasExtra,
     notas: notasEquipo,
     puntos,
-    fecha: new Date().toLocaleString(),
-    timestamp: Date.now(),
+    fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
+    timestamp: new Date(fechaEvaluacion + "T12:00:00").getTime(),
   };
 
   const { data, error } = await supabase
@@ -354,8 +359,8 @@ export default function App() {
 
     const nueva: EvaluacionManuel = {
       id: crearId(),
-      fecha: new Date().toLocaleString(),
-      timestamp: Date.now(),
+      fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
+      timestamp: new Date(fechaEvaluacion + "T12:00:00").getTime(),
       controlSistema: Number(manuel.controlSistema),
       supervision: Number(manuel.supervision),
       liderazgo: Number(manuel.liderazgo),
@@ -371,7 +376,7 @@ export default function App() {
   .from("evaluaciones_manuel")
   .insert([
     {
-      fecha: new Date().toLocaleString(),
+      fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
       total: total,
       notas: manuel.notas,
       data: nueva,
@@ -512,9 +517,78 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     );
   }
 
+  const inicioSemanaDeFecha = (fecha: string) => {
+    const d = new Date(fecha);
+    const dia = d.getDay();
+    const diff = d.getDate() - dia + (dia === 0 ? -6 : 1);
+
+    return new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      diff,
+      0,
+      0,
+      0
+    ).getTime();
+  };
+
+  const finSemanaDeFecha = (fecha: string) => {
+    const inicio = inicioSemanaDeFecha(fecha);
+    return inicio + (7 * 24 * 60 * 60 * 1000) - 1;
+  };
+
   const registrosSemana = registros.filter((r) => {
     const time = r.timestamp || new Date(r.fecha).getTime();
-    return time >= inicioSemanaActual() && time <= finSemanaActual();
+
+    return (
+      time >= inicioSemanaDeFecha(fechaSemanaHistorial) &&
+      time <= finSemanaDeFecha(fechaSemanaHistorial)
+    );
+  });
+
+  const inicioMesDeFecha = (fecha: string) => {
+    const d = new Date(fecha);
+
+    return new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      1,
+      0,
+      0,
+      0
+    ).getTime();
+  };
+
+  const finMesDeFecha = (fecha: string) => {
+    const d = new Date(fecha);
+
+    return new Date(
+      d.getFullYear(),
+      d.getMonth() + 1,
+      0,
+      23,
+      59,
+      59
+    ).getTime();
+  };
+
+  const inicioMesActual = () => {
+    const ahora = new Date();
+    return new Date(ahora.getFullYear(), ahora.getMonth(), 1).getTime();
+  };
+
+  const finMesActual = () => {
+    const ahora = new Date();
+    return new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0, 23, 59, 59).getTime();
+  };
+
+  const registrosMes = registros.filter((r) => {
+    const time = r.timestamp || new Date(r.fecha).getTime();
+
+    return (
+      time >= inicioMesDeFecha(fechaMesHistorial) &&
+      time <= finMesDeFecha(fechaMesHistorial)
+    );
   });
 
   const rankingSemana = trabajadores
@@ -525,6 +599,15 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
       return { nombre, total, promedio, evaluaciones: regs.length };
     })
     .sort((a, b) => b.total - a.total);
+
+  const rankingMes = trabajadores
+    .map((nombre) => {
+      const regs = registrosMes.filter((r) => r.trabajador === nombre);
+      const total = regs.reduce((acc, r) => acc + r.puntos, 0);
+      const promedio = regs.length ? Math.round((total / regs.length) * 10) / 10 : 0;
+      return { nombre, total, promedio, evaluaciones: regs.length };
+    })
+    .sort((a, b) => b.total - a.total);  
 
   const rankingGeneral = trabajadores
     .map((nombre) => {
@@ -757,7 +840,18 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
         {pantalla === "registro" && (
           <>
             <div style={estilos.card}>
-              <h3>📝 Registro</h3>
+              <h3>🧾 Registro</h3>
+
+              <div style={{ marginBottom: "10px" }}>
+                <label>Fecha de evaluación:</label>
+                <input
+                  type="date"
+                  value={fechaEvaluacion}
+                  onChange={(e) => setFechaEvaluacion(e.target.value)}
+                  style={estilos.input}
+                />
+              </div>
+
               <Campo label="Quién evalúa" value={evaluador} setValue={setEvaluador} options={["Steven", "Manuel"]} />
               <Campo label="Trabajador" value={trabajador} setValue={setTrabajador} options={trabajadores} />
               <Campo label="Turno" value={turno} setValue={setTurno} options={["Apertura", "AM", "PM"]} />
@@ -824,6 +918,17 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
           <>
             <div style={estilos.card}>
               <h3>🏆 Ranking semanal</h3>
+
+              <div style={{ marginBottom: "10px" }}>
+                <label>Ver semana de:</label>
+                <input
+                  type="date"
+                  value={fechaSemanaHistorial}
+                  onChange={(e) => setFechaSemanaHistorial(e.target.value)}
+                  style={estilos.input}
+                />
+              </div>
+
               {rankingSemana.map((r, i) => (
                 <div key={r.nombre} style={{ padding: 12, borderBottom: "1px solid #64748b" }}>
                   <strong>{i + 1}. {r.nombre}</strong><br />
@@ -834,6 +939,35 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                 </div>
               ))}
             </div>
+
+            <div style={estilos.card}>
+              <h3>📅 Ranking mensual</h3>
+
+              <div style={{ marginBottom: "10px" }}>
+                <label>Ver mes de:</label>
+                <input
+                  type="date"
+                  value={fechaMesHistorial}
+                  onChange={(e) => setFechaMesHistorial(e.target.value)}
+                  style={estilos.input}
+                />
+              </div>
+
+              {rankingMes.map((p, i) => (
+              <div key={p.nombre} style={{ marginBottom: 10 }}>
+                <strong>{i + 1}. {p.nombre}</strong><br />
+                Total: {p.total} pts<br />
+                Promedio: {p.promedio} pts<br />
+                Evaluaciones: {p.evaluaciones}<br />
+                Premio: {
+                  i === 0 ? "🥇 Oro" :
+                  i === 1 ? "🥈 Plata" :
+                  i === 2 ? "🍽️ Comida especial" :
+                  "Sin premio"
+                }
+              </div>
+            ))}
+          </div>
 
             <div style={estilos.card}>
               <h3>🚨 Alertas</h3>
