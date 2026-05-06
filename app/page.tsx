@@ -45,6 +45,7 @@ type Registro = {
   equipo: string;
   actitud: string;
   puntualidad: string;
+  uniformidad: string;
   rotacion: boolean;
   descongelacion: boolean;
   transicion: boolean;
@@ -145,6 +146,7 @@ export default function App() {
   const [equipo, setEquipo] = useState("Normal");
   const [actitud, setActitud] = useState("Normal");
   const [puntualidad, setPuntualidad] = useState("Listo");
+  const [uniformidad, setUniformidad] = useState("Completa y limpia");
 
   const [rotacion, setRotacion] = useState(false);
   const [descongelacion, setDescongelacion] = useState(false);
@@ -254,6 +256,11 @@ export default function App() {
     if (puntualidad === "Listo") extra += 2;
     if (puntualidad === "Tarde") extra -= 2;
 
+    if (uniformidad === "Completa y limpia") extra += 2;
+    if (uniformidad === "Completa pero mejorable") extra += 1;
+    if (uniformidad === "Sucia o mal presentada") extra -= 2;
+    if (uniformidad === "Sin uniforme") extra -= 3;
+
     if (rotacion) extra += 2;
     if (descongelacion) extra += 2;
     if (transicion) extra += 2;
@@ -279,6 +286,7 @@ export default function App() {
     equipo,
     actitud,
     puntualidad,
+    uniformidad,
     rotacion,
     descongelacion,
     transicion,
@@ -301,6 +309,7 @@ export default function App() {
     equipo,
     actitud,
     puntualidad,
+    uniformidad,
     rotacion,
     descongelacion,
     transicion,
@@ -537,6 +546,36 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     return inicio + (7 * 24 * 60 * 60 * 1000) - 1;
   };
 
+  const textoSemanaSeleccionada = () => {
+    const inicio = new Date(inicioSemanaDeFecha(fechaSemanaHistorial));
+    const fin = new Date(finSemanaDeFecha(fechaSemanaHistorial));
+
+    return `${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}`;
+  };
+
+  const textoMesSeleccionado = () => {
+    const d = new Date(fechaMesHistorial);
+
+    return d.toLocaleDateString("es-ES", {
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const cambiarSemanaHistorial = (dias: number) => {
+    const d = new Date(fechaSemanaHistorial);
+    d.setDate(d.getDate() + dias);
+    setFechaSemanaHistorial(d.toISOString().split("T")[0]);
+  };
+
+  const cambiarMesHistorial = (meses: number) => {
+    const d = new Date(fechaMesHistorial);
+
+    d.setMonth(d.getMonth() + meses);
+
+    setFechaMesHistorial(d.toISOString().split("T")[0]);
+  };
+
   const registrosSemana = registros.filter((r) => {
     const time = r.timestamp || new Date(r.fecha).getTime();
 
@@ -546,30 +585,41 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     );
   });
 
-  const inicioMesDeFecha = (fecha: string) => {
-    const d = new Date(fecha);
-
-    return new Date(
-      d.getFullYear(),
-      d.getMonth(),
-      1,
-      0,
-      0,
-      0
-    ).getTime();
-  };
-
   const finMesDeFecha = (fecha: string) => {
     const d = new Date(fecha);
 
-    return new Date(
+    const ultimoDiaMes = new Date(
       d.getFullYear(),
       d.getMonth() + 1,
       0,
       23,
       59,
       59
-    ).getTime();
+    );
+
+    const dia = ultimoDiaMes.getDay();
+    const diasHastaDomingo = dia === 0 ? 0 : 7 - dia;
+
+    ultimoDiaMes.setDate(ultimoDiaMes.getDate() + diasHastaDomingo);
+
+    return ultimoDiaMes.getTime();
+  };
+
+  const inicioMesDeFecha = (fecha: string) => {
+    const d = new Date(fecha);
+
+    const mesAnterior = new Date(
+      d.getFullYear(),
+      d.getMonth() - 1,
+      1
+    );
+
+    const finMesAnterior = new Date(finMesDeFecha(mesAnterior.toISOString()));
+
+    finMesAnterior.setDate(finMesAnterior.getDate() + 1);
+    finMesAnterior.setHours(0, 0, 0, 0);
+
+    return finMesAnterior.getTime();
   };
 
   const inicioMesActual = () => {
@@ -857,7 +907,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
               <Campo label="Turno" value={turno} setValue={setTurno} options={["Apertura", "AM", "PM"]} />
               <Campo label="Puesto" value={puesto} setValue={setPuesto} options={["Parrilla", "Fritos", "Montaje", "Dish"]} />
               <Campo label="Personas en turno" value={personas} setValue={setPersonas} options={["1", "2", "3+"]} />
-              <Campo label="Rendimiento" value={rendimiento} setValue={setRendimiento} options={["Bajo", "Normal", "Bueno", "Excelente"]} />
+              <Campo label="Venta" value={rendimiento} setValue={setRendimiento} options={["Bajo", "Normal", "Bueno", "Excelente"]} />
             </div>
 
             <div style={estilos.card}>
@@ -873,6 +923,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
               <Campo label="Trabajo en equipo" value={equipo} setValue={setEquipo} options={["Ayuda", "Normal", "No ayuda"]} />
               <Campo label="Actitud" value={actitud} setValue={setActitud} options={["Proactivo", "Normal", "Mala"]} />
               <Campo label="Puntualidad" value={puntualidad} setValue={setPuntualidad} options={["Listo", "Tarde leve", "Tarde"]} />
+              <Campo label="Uniformidad" value={uniformidad} setValue={setUniformidad} options={["Completa y limpia", "Completa pero mejorable", "Incompleta", "Sucia o mal presentada", "Sin uniforme"]} />
             </div>
 
             <div style={estilos.card}>
@@ -919,6 +970,26 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
             <div style={estilos.card}>
               <h3>🏆 Ranking semanal</h3>
 
+              <p className="text-sm opacity-70 mb-2">
+                Semana: {textoSemanaSeleccionada()}
+              </p>
+
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => cambiarSemanaHistorial(-7)}
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                >
+                  ← Semana anterior
+                </button>
+
+                <button
+                  onClick={() => cambiarSemanaHistorial(7)}
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                >
+                  Semana siguiente →
+                </button>
+              </div>
+
               <div style={{ marginBottom: "10px" }}>
                 <label>Ver semana de:</label>
                 <input
@@ -935,13 +1006,32 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                   Total: {r.total} pts<br />
                   Promedio: {r.promedio} pts<br />
                   Evaluaciones: {r.evaluaciones}<br />
-                  Premio: {premioDe(r.nombre)}
                 </div>
               ))}
             </div>
 
             <div style={estilos.card}>
               <h3>📅 Ranking mensual</h3>
+
+              <p className="text-sm opacity-70 mb-2">
+                Mes: {textoMesSeleccionado()}
+              </p>
+
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => cambiarMesHistorial(-1)}
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                >
+                  ← Mes anterior
+                </button>
+
+                <button
+                  onClick={() => cambiarMesHistorial(1)}
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                >
+                  Mes siguiente →
+                </button>
+              </div>
 
               <div style={{ marginBottom: "10px" }}>
                 <label>Ver mes de:</label>
@@ -954,15 +1044,44 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
               </div>
 
               {rankingMes.map((p, i) => (
-              <div key={p.nombre} style={{ marginBottom: 10 }}>
-                <strong>{i + 1}. {p.nombre}</strong><br />
+              <div
+                key={p.nombre}
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border:
+                    i === 0 ? "2px solid #facc15" :
+                    i === 1 ? "2px solid #d4d4d8" :
+                    i === 2 ? "2px solid #fb923c" :
+                    "1px solid rgba(255,255,255,0.2)",
+                  background:
+                    i === 0 ? "rgba(250, 204, 21, 0.15)" :
+                    i === 1 ? "rgba(212, 212, 216, 0.15)" :
+                    i === 2 ? "rgba(251, 146, 60, 0.15)" :
+                    "transparent",
+                  }}
+              >
+                
+                <strong style={{ fontSize: 20 }}>
+                  {
+                    i === 0
+                    ? "🥇 "
+                    : i === 1
+                    ? "🥈 "
+                    : i === 2
+                    ? "🥉 "
+                    : `#${i + 1} `
+                  }
+                  {p.nombre}
+                </strong>
                 Total: {p.total} pts<br />
                 Promedio: {p.promedio} pts<br />
                 Evaluaciones: {p.evaluaciones}<br />
                 Premio: {
-                  i === 0 ? "🥇 Oro" :
-                  i === 1 ? "🥈 Plata" :
-                  i === 2 ? "🍽️ Comida especial" :
+                  i === 0 ? "🥇 Oro - 50€ efectivo" :
+                  i === 1 ? "🥈 Plata - 30€ empresa" :
+                  i === 2 ? "🥉 Bronce - comida de carta sin chuletón" :
                   "Sin premio"
                 }
               </div>
@@ -1025,7 +1144,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                     {r.turno} - {r.puesto}<br />
                     Puntos: <strong>{r.puntos}</strong><br />
                     Limpieza: {r.limpieza} | Área: {r.areaRellena} | Tareas: {r.tareasPuesto}<br />
-                    Calidad: {r.calidad} | Equipo: {r.equipo} | Actitud: {r.actitud}<br />
+                    Calidad: {r.calidad} | Equipo: {r.equipo} | Actitud: {r.actitud} | Uniformidad: {r.uniformidad}<br />
                     Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
                     Notas: {r.notas || "Sin nota"}<br />
                     <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>Borrar este registro</button>
@@ -1143,7 +1262,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                 <strong>{r.fecha}</strong><br />
                 Evaluador: {r.evaluador}<br />
                 {r.trabajador} - {r.turno} - {r.puesto}<br />
-                Personas: {r.personas} | Rendimiento: {r.rendimiento}<br />
+                Personas: {r.personas} | Venta: {r.rendimiento}<br />
                 Puntos: <strong>{r.puntos}</strong><br />
                 Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
                 Notas: {r.notas || "Sin nota"}<br />
