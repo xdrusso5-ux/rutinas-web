@@ -51,6 +51,7 @@ type Registro = {
   transicion: boolean;
   tareasExtra?: string[];
   notas?: string;
+  imagen?: string;
   puntos: number;
   fecha: string;
   timestamp: number;
@@ -153,6 +154,36 @@ export default function App() {
   const [transicion, setTransicion] = useState(false);
   const [tareasExtra, setTareasExtra] = useState<string[]>([]);
   const [notasEquipo, setNotasEquipo] = useState("");
+  const [imagenesEquipo, setImagenesEquipo] = useState<File[]>([])
+  const [imagenAbierta, setImagenAbierta] = useState<string | null>(null)
+  
+  async function subirImagenesNota() {
+    if (imagenesEquipo.length === 0) return []
+
+    const urls: string[] = []
+
+    for (const imagen of imagenesEquipo) {
+      const nombreArchivo = `${Date.now()}-${imagen.name}`
+
+      const { error } = await supabase.storage
+        .from("notas")
+        .upload(`notas/${nombreArchivo}`, imagen)
+
+      if (error) {
+        console.error("Error subiendo imagen:", error)
+        alert("Error subiendo una imagen")
+        continue
+      }
+
+      const { data } = supabase.storage
+        .from("notas")
+        .getPublicUrl(`notas/${nombreArchivo}`)
+
+      urls.push(data.publicUrl)
+    }
+
+    return urls
+  }
 
   const [puntos, setPuntos] = useState(0);
   const [registros, setRegistros] = useState<Registro[]>([]);
@@ -294,6 +325,7 @@ export default function App() {
   ]);
   
   async function guardar() {
+  const imagenesUrls = await subirImagenesNota()  
   const nuevo: Registro = {
     id: crearId(),
     evaluador,
@@ -315,6 +347,7 @@ export default function App() {
     transicion,
     tareasExtra,
     notas: notasEquipo,
+    imagenes: imagenesUrls,
     puntos,
     fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
     timestamp: new Date(fechaEvaluacion + "T12:00:00").getTime(),
@@ -331,6 +364,7 @@ export default function App() {
       puntos,
       fecha: nuevo.fecha,
       notas: notasEquipo,
+      imagenes: imagenesUrls,
       data: nuevo,
     },
   ])
@@ -352,6 +386,7 @@ export default function App() {
   setTransicion(false);
   setTareasExtra([]);
   setNotasEquipo("");
+  setImagenesEquipo([])
 
   mostrarMensaje("Guardado en la nube ✅")
 }
@@ -837,7 +872,34 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     {mensaje}
   </div>
 )}
-    
+  {imagenAbierta && (
+    <div
+      onClick={() => setImagenAbierta(null)}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.85)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: 20,
+      }}
+    >
+      <img
+        src={imagenAbierta}
+        alt="Imagen ampliada"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: "95%",
+          maxHeight: "95%",
+          borderRadius: 16,
+          objectFit: "contain",
+        }}
+      />
+    </div>
+  )}
+
     {confirmacion.accion && (
     <div style={{
       position: "fixed",
@@ -956,6 +1018,25 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                 placeholder="Ej: ayudó en dish, dejó cámara mal, salvó el servicio..."
                 style={{ ...estilos.input, minHeight: 90 }}
               />
+              <div style={{ marginTop: 10 }}>
+                <label>Imagen de la nota</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={estilos.input}
+                  onChange={(e) => {
+                    const archivos = Array.from(e.target.files || [])
+                    setImagenesEquipo((prev) => [...prev, ...archivos])
+                  }}
+                />
+
+                {imagenesEquipo.length > 0 && (
+                  <p style={{ fontSize: 13 }}>
+                    Imágenes seleccionadas: {imagenesEquipo.length}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div style={{ ...estilos.card, position: "sticky", bottom: 70, border: "2px solid #2563eb" }}>
@@ -1147,6 +1228,34 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                     Calidad: {r.calidad} | Equipo: {r.equipo} | Actitud: {r.actitud} | Uniformidad: {r.uniformidad}<br />
                     Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
                     Notas: {r.notas || "Sin nota"}<br />
+                    {r.imagenes?.length > 0 && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          marginTop: 10,
+                          maxWidth: 280,
+                        }}
+                      >
+                        {r.imagenes.map((img: string, index: number) => (
+                          <img
+                            key={index}
+                            src={img}
+                            alt={`Nota ${index + 1}`}
+                            onClick={() => setImagenAbierta(img)}
+                            style={{
+                              width: 90,
+                              height: 90,
+                              objectFit: "cover",
+                              borderRadius: 12,
+                              cursor: "pointer",
+                              border: "2px solid rgba(255,255,255,0.25)",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
                     <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>Borrar este registro</button>
                   </div>
                 ))
@@ -1266,6 +1375,34 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                 Puntos: <strong>{r.puntos}</strong><br />
                 Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
                 Notas: {r.notas || "Sin nota"}<br />
+                {r.imagenes?.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginTop: 10,
+                      maxWidth: 280,
+                    }}
+                  >
+                    {r.imagenes.map((img: string, index: number) => (
+                      <img
+                        key={index}
+                        src={img}
+                        alt={`Nota ${index + 1}`}
+                        onClick={() => setImagenAbierta(img)}
+                        style={{
+                          width: 90,
+                          height: 90,
+                          objectFit: "cover",
+                          borderRadius: 12,
+                          cursor: "pointer",
+                          border: "2px solid rgba(255,255,255,0.25)",
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
                 <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>Borrar este registro</button>
               </div>
             ))}
