@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-const trabajadores = ["Sandra", "Javier", "Lorena", "Cristino", "Noemí", "Josmelin"];
 
 const tareasExtraDisponibles = [
   "Limpiar tablas a fondo",
@@ -101,6 +100,10 @@ function formatoFechaSemana() {
 }
 
 export default function App() {
+  const [trabajadores, setTrabajadores] = useState<string[]>([])
+  const [empleadosAdmin, setEmpleadosAdmin] = useState<any[]>([])
+  const [nuevoEmpleado, setNuevoEmpleado] = useState("")
+  const [nuevoRol, setNuevoRol] = useState("empleado")
   const [mensaje, setMensaje] = useState("");
   const [confirmacion, setConfirmacion] = useState<{
   texto: string;
@@ -110,15 +113,17 @@ export default function App() {
   accion: null,
 });
   function mostrarMensaje(texto: string) {
-    function pedirConfirmacion(texto: string, accion: () => void) {
-  setConfirmacion({
-    texto,
-    accion,
-  });
-}
-  setMensaje(texto);
-  setTimeout(() => setMensaje(""), 3000);
+    setMensaje(texto)
+    setTimeout(() => setMensaje(""), 3000)
   }
+
+  function pedirConfirmacion(texto: string, accion: () => void) {
+    setConfirmacion({
+      texto,
+      accion,
+    })
+  }
+
   const [pantalla, setPantalla] = useState("registro");
   const [tema, setTema] = useState("oscuro");
   const [personaHistorial, setPersonaHistorial] = useState("Sandra");
@@ -229,10 +234,123 @@ export default function App() {
   }
 }
 
+  async function cargarEmpleados() {
+    const { data, error } = await supabase
+      .from("empleados")
+      .select("*")
+      .order("nombre", { ascending: true })
+
+    if (error) {
+      console.error("Error cargando empleados:", error)
+      return
+    }
+
+    if (data) {
+      const nombres = data
+        .filter((empleado: any) => empleado.activo)
+        .map((empleado: any) => empleado.nombre)
+      console.log("EMPLEADOS ACTIVOS:", nombres)
+      setTrabajadores(nombres)
+      setEmpleadosAdmin(data)
+    }
+  }
+
   useEffect(() => {
-  cargarDatos()
-  cargarEvaluacionesManuel()
+    cargarDatos()
+    cargarEvaluacionesManuel()
+    cargarEmpleados()
   }, [])
+
+  async function agregarEmpleado() {
+    const nombreLimpio = nuevoEmpleado.trim()
+
+    if (!nombreLimpio) {
+      alert("Escribe un nombre")
+      return
+    }
+
+    const { error } = await supabase
+      .from("empleados")
+      .insert([
+        {
+          nombre: nombreLimpio,
+          activo: true,
+          rol: nuevoRol,
+        },
+      ])
+
+    if (error) {
+      console.error("Error agregando empleado:", error)
+      alert("Error agregando empleado")
+      return
+    }
+
+    setNuevoEmpleado("")
+    setNuevoRol("empleado")
+    await cargarEmpleados()
+  }
+
+async function cambiarEstadoEmpleado(id: string, activoActual: boolean) {
+  const { error } = await supabase
+    .from("empleados")
+    .update({ activo: !activoActual })
+    .eq("id", id)
+
+  if (error) {
+    console.error("Error cambiando estado:", error)
+    alert("Error cambiando estado")
+    return
+  }
+
+  await cargarEmpleados()
+}
+
+async function cambiarRolEmpleado(id: string, nuevoRolEmpleado: string) {
+  const { error } = await supabase
+    .from("empleados")
+    .update({ rol: nuevoRolEmpleado })
+    .eq("id", id)
+
+  if (error) {
+    console.error("Error cambiando rol:", error)
+    alert("Error cambiando rol")
+    return
+  }
+
+  await cargarEmpleados()
+}
+
+async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
+  pedirConfirmacion(
+    `¿Seguro que quieres eliminar definitivamente a ${nombre}? Se borrará también su historial y no se podrá recuperar.`,
+    async () => {
+      const { error: errorHistorial } = await supabase
+        .from("evaluaciones_equipo")
+        .delete()
+        .eq("trabajador", nombre)
+
+      if (errorHistorial) {
+        console.error("Error borrando historial:", errorHistorial)
+        alert("Error borrando historial del empleado")
+        return
+      }
+
+      const { error: errorEmpleado } = await supabase
+        .from("empleados")
+        .delete()
+        .eq("id", id)
+
+      if (errorEmpleado) {
+        console.error("Error eliminando empleado:", errorEmpleado)
+        alert("Error eliminando empleado")
+        return
+      }
+
+      await cargarEmpleados()
+      await cargarDatos()
+    }
+  )
+}
 
   const [manuel, setManuel] = useState({
     controlSistema: 5,
@@ -1368,41 +1486,54 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
 
             {registros.map((r) => (
               <div key={r.id} style={{ marginBottom: 14, borderBottom: "1px solid #64748b", paddingBottom: 10 }}>
-                <strong>{r.fecha}</strong><br />
-                Evaluador: {r.evaluador}<br />
-                {r.trabajador} - {r.turno} - {r.puesto}<br />
-                Personas: {r.personas} | Venta: {r.rendimiento}<br />
-                Puntos: <strong>{r.puntos}</strong><br />
-                Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
-                Notas: {r.notas || "Sin nota"}<br />
-                {r.imagenes?.length > 0 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 8,
-                      marginTop: 10,
-                      maxWidth: 280,
-                    }}
-                  >
-                    {r.imagenes.map((img: string, index: number) => (
-                      <img
-                        key={index}
-                        src={img}
-                        alt={`Nota ${index + 1}`}
-                        onClick={() => setImagenAbierta(img)}
-                        style={{
-                          width: 90,
-                          height: 90,
-                          objectFit: "cover",
-                          borderRadius: 12,
-                          cursor: "pointer",
-                          border: "2px solid rgba(255,255,255,0.25)",
-                        }}
-                      />
-                    ))}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 14,
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ flex: "1 1 260px" }}>
+                    <strong>{r.fecha}</strong><br />
+                    Evaluador: {r.evaluador}<br />
+                    {r.trabajador} - {r.turno} - {r.puesto}<br />
+                    Personas: {r.personas} | Venta: {r.rendimiento}<br />
+                    Puntos: <strong>{r.puntos}</strong><br />
+                    Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra.join(", ") : "Ninguna"}<br />
+                    Notas: {r.notas || "Sin nota"}<br />
                   </div>
-                )}
+
+                  {r.imagenes?.length > 0 && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, 90px)",
+                        gap: 8,
+                        flex: "0 0 190px",
+                      }}
+                    >
+                      {r.imagenes.map((img: string, index: number) => (
+                        <img
+                          key={index}
+                          src={img}
+                          alt={`Nota ${index + 1}`}
+                          onClick={() => setImagenAbierta(img)}
+                          style={{
+                            width: 90,
+                            height: 90,
+                            objectFit: "cover",
+                            borderRadius: 12,
+                            cursor: "pointer",
+                            border: "2px solid rgba(255,255,255,0.25)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
                 <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>Borrar este registro</button>
               </div>
             ))}
@@ -1420,6 +1551,82 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
             </select>
 
             <hr style={{ margin: "20px 0" }} />
+
+            <h3>👥 Gestionar empleados</h3>
+
+            <input
+              type="text"
+              placeholder="Nombre del empleado"
+              value={nuevoEmpleado}
+              onChange={(e) => setNuevoEmpleado(e.target.value)}
+              style={estilos.input}
+            />
+
+            <select
+              value={nuevoRol}
+              onChange={(e) => setNuevoRol(e.target.value)}
+              style={estilos.input}
+            >
+              <option value="empleado">Empleado</option>
+              <option value="supervisor">Supervisor</option>
+              <option value="admin">Administrador</option>
+            </select>
+
+            <button
+              style={{ ...estilos.button, width: "100%", marginBottom: 20 }}
+              onClick={agregarEmpleado}
+            >
+              Agregar empleado
+            </button>
+
+            {empleadosAdmin.map((emp: any) => (
+              <div
+                key={emp.id}
+                style={{
+                  padding: 10,
+                  borderBottom: "1px solid #555",
+                  marginBottom: 10,
+                }}
+              >
+                <strong>{emp.nombre}</strong> — {emp.rol}
+
+                <select
+                  value={emp.rol}
+                  onChange={(e) => cambiarRolEmpleado(emp.id, e.target.value)}
+                  style={{ ...estilos.input, marginTop: 8 }}
+                >
+                  <option value="empleado">Empleado</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="admin">Administrador</option>
+                </select>
+
+                <br />
+
+                <button
+                  style={{
+                  ...estilos.button,
+                  width: "100%",
+                  marginTop: 10,
+                  background: emp.activo ? "#b91c1c" : "#166534",
+                }}
+                onClick={() =>
+                  cambiarEstadoEmpleado(emp.id, emp.activo)
+                }
+              >
+                {emp.activo ? "Desactivar" : "Activar"}
+              </button>
+              <button
+                style={{
+                ...estilos.dangerButton,
+                width: "100%",
+                marginTop: 8,
+              }}
+              onClick={() => eliminarEmpleadoDefinitivo(emp.id, emp.nombre)}
+            >
+              Eliminar definitivamente
+            </button>
+            </div>
+          ))}
 
             <h3>🔒 Cambiar PIN de Manuel</h3>
             <p style={{ opacity: 0.75 }}>PIN actual por defecto: 1234. Cámbialo por uno privado.</p>
