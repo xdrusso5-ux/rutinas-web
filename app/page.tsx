@@ -113,8 +113,11 @@ export default function App() {
   accion: null,
 });
   function mostrarMensaje(texto: string) {
-    setMensaje(texto)
-    setTimeout(() => setMensaje(""), 3000)
+    setMensaje(texto);
+
+    setTimeout(() => {
+      setMensaje("");
+    }, 3000);
   }
 
   function pedirConfirmacion(texto: string, accion: () => void) {
@@ -124,19 +127,21 @@ export default function App() {
     })
   }
 
-  const [pantalla, setPantalla] = useState("registro");
+  const [pantalla, setPantalla] = useState("ranking");
   const [tema, setTema] = useState("oscuro");
+  const [usuarioActual, setUsuarioActual] = useState<any>(null);
+  const esAdmin = usuarioActual?.rol === "admin"
+  const esSupervisor = usuarioActual?.rol === "supervisor"
+  const esEmpleado = usuarioActual?.rol === "empleado"
+  const [nombreLogin, setNombreLogin] = useState("");
+  const [pinLogin, setPinLogin] = useState("");
+  const [sesionIniciada, setSesionIniciada] = useState(false);
   const [personaHistorial, setPersonaHistorial] = useState("Sandra");
 
   const hoyInput = new Date().toISOString().split("T")[0];
   const [fechaEvaluacion, setFechaEvaluacion] = useState(hoyInput);
   const [fechaSemanaHistorial, setFechaSemanaHistorial] = useState(hoyInput);
   const [fechaMesHistorial, setFechaMesHistorial] = useState(hoyInput);
-
-  const [pinManuel, setPinManuel] = useState("1234");
-  const [pinIntroducido, setPinIntroducido] = useState("");
-  const [manuelDesbloqueado, setManuelDesbloqueado] = useState(false);
-  const [nuevoPin, setNuevoPin] = useState("");
 
   const [evaluador, setEvaluador] = useState("Steven");
   const [trabajador, setTrabajador] = useState("Sandra");
@@ -234,6 +239,46 @@ export default function App() {
   }
 }
 
+  async function iniciarSesion() {
+    const empleado = empleadosAdmin.find(
+      (e: any) =>
+        e.nombre === nombreLogin &&
+        String(e.pin || "") === pinLogin &&
+        e.activo
+    );
+
+    if (!empleado) {
+      mostrarMensaje("❌ PIN o usuario incorrecto");
+      return;
+    }
+
+    setUsuarioActual(empleado);
+    setSesionIniciada(true);
+
+    if (empleado.rol === "empleado") {
+      setPantalla("ranking")
+    }
+
+    if (empleado.rol === "supervisor") {
+      setPantalla("registro")
+    }
+
+    if (empleado.rol === "admin") {
+      setPantalla("registro")
+    }
+
+    mostrarMensaje(`Bienvenido ${empleado.nombre}`);
+  }
+
+  function cerrarSesion() {
+    setUsuarioActual(null);
+    setSesionIniciada(false);
+    setNombreLogin("");
+    setPinLogin("");
+
+    mostrarMensaje("Sesión cerrada");
+  }
+
   async function cargarEmpleados() {
     const { data, error } = await supabase
       .from("empleados")
@@ -247,7 +292,7 @@ export default function App() {
 
     if (data) {
       const nombres = data
-        .filter((empleado: any) => empleado.activo)
+        .filter((empleado: any) => empleado.activo && empleado.participa_concurso)
         .map((empleado: any) => empleado.nombre)
       console.log("EMPLEADOS ACTIVOS:", nombres)
       setTrabajadores(nombres)
@@ -276,6 +321,7 @@ export default function App() {
           nombre: nombreLimpio,
           activo: true,
           rol: nuevoRol,
+          participa_concurso: nuevoRol === "empleado",
         },
       ])
 
@@ -308,7 +354,7 @@ async function cambiarEstadoEmpleado(id: string, activoActual: boolean) {
 async function cambiarRolEmpleado(id: string, nuevoRolEmpleado: string) {
   const { error } = await supabase
     .from("empleados")
-    .update({ rol: nuevoRolEmpleado })
+    .update({rol: nuevoRolEmpleado,participa_concurso: nuevoRolEmpleado === "empleado",})
     .eq("id", id)
 
   if (error) {
@@ -651,26 +697,6 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
   return;
   }
 
-  function entrarManuel() {
-    if (pinIntroducido === pinManuel) {
-      setManuelDesbloqueado(true);
-      setPinIntroducido("");
-    } else {
-      alert("PIN incorrecto");
-    }
-  }
-
-  function cambiarPin() {
-    if (nuevoPin.trim().length < 4) {
-      alert("El PIN debe tener mínimo 4 caracteres");
-      return;
-    }
-
-    setPinManuel(nuevoPin.trim());
-    setNuevoPin("");
-    alert("PIN actualizado");
-  }
-
   console.log("prueba deploy");
 
   function toggleTareaExtra(tarea: string) {
@@ -836,9 +862,58 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
 
   const alertas = rankingSemana.filter((r) => r.promedio < 10 && r.evaluaciones >= 2);
 
+  const personasDisponiblesPersonal = empleadosAdmin.filter((e: any) => {
+    if (!usuarioActual) return false;
+
+    if (usuarioActual.rol === "admin") return e.activo;
+
+    if (usuarioActual.rol === "empleado") {
+      return e.activo && e.nombre === usuarioActual.nombre;
+    }
+
+    if (usuarioActual.rol === "supervisor") {
+      return (
+        e.activo &&
+        (e.rol === "empleado" || e.nombre === usuarioActual.nombre)
+      );
+    }
+
+    return false;
+  });
+
+  const personaVisible =
+    usuarioActual?.rol === "empleado"
+      ? usuarioActual.nombre
+      : personaHistorial;
+
+  function fechaRegistro(valor: any) {
+    if (!valor) return 0;
+
+    if (typeof valor === "string") {
+      const soloFecha = valor.split(",")[0].trim();
+
+      if (soloFecha.includes("/")) {
+        const [dia, mes, año] = soloFecha.split("/");
+        return new Date(Number(año), Number(mes) - 1, Number(dia)).getTime();
+      }
+
+      if (soloFecha.includes("-")) {
+        return new Date(soloFecha).getTime();
+      }
+    }
+
+    return new Date(valor).getTime();
+  }
+
   const registrosPersona = registros
-    .filter((r) => r.trabajador === personaHistorial)
-    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    .filter((r) => r.trabajador === personaVisible)
+    .sort((a, b) => {
+      return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
+    });
+
+  const registrosOrdenados = [...registros].sort((a, b) => {
+    return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
+  });
 
   const totalPersona = registrosPersona.reduce((acc, r) => acc + r.puntos, 0);
   const promedioPersona = registrosPersona.length
@@ -885,13 +960,16 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
   }
 
   const totalManuel =
-    Number(manuel.controlSistema) +
-    Number(manuel.supervision) +
-    Number(manuel.liderazgo) +
-    Number(manuel.justicia) +
-    Number(manuel.resultadoTurno) +
-    Number(manuel.pedidosStock) +
-    Number(manuel.revisionAppPc);
+    (manuel.controlSistema ?? 5) +
+    (manuel.supervision ?? 5) +
+    (manuel.liderazgo ?? 5) +
+    (manuel.justicia ?? 5) +
+    (manuel.resultadoTurno ?? 5) +
+    (manuel.pedidosStock ?? 5) +
+    (manuel.appcc ?? 5) +
+    (manuel.comunicacion ?? 5) +
+    (manuel.resolucion ?? 5) +
+    (manuel.organizacion ?? 5);
 
   const esOscuro = tema === "oscuro";
 
@@ -972,24 +1050,89 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
       </div>
     );
   }
+   
+  if (!sesionIniciada) {
+    return (
+      <div style={estilos.fondo}>
+        {mensaje && (
+          <div
+            style={{
+              position: "fixed",
+              top: 20,
+              right: 20,
+              background: "#c62828",
+              color: "white",
+              padding: "12px 20px",
+              borderRadius: 10,
+              boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
+              zIndex: 9999,
+              fontWeight: "bold",
+            }}
+          >
+            {mensaje}
+          </div>
+        )}
+        <div style={estilos.card}>
+          <h2>🔐 Acceso Concurso Cocina</h2>
 
+          <label>Empleado</label>
+          <select
+            value={nombreLogin}
+            onChange={(e) => setNombreLogin(e.target.value)}
+            style={estilos.input}
+          >
+            <option value="">Selecciona tu nombre</option>
+            {empleadosAdmin
+              .filter((e: any) => e.activo)
+              .map((e: any) => (
+                <option key={e.id} value={e.nombre}>
+                  {e.nombre}
+                </option>
+              ))}
+          </select>
+
+          <label>PIN</label>
+          <input
+            type="password"
+            placeholder="Introduce tu PIN"
+            value={pinLogin}
+            onChange={(e) => setPinLogin(e.target.value)}
+            style={estilos.input}
+          />
+
+          <button
+            style={{ ...estilos.button, width: "100%" }}
+            onClick={iniciarSesion}
+          >
+            Entrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div style={estilos.fondo}>
       {mensaje && (
-  <div style={{
-    position: "fixed",
-    top: 20,
-    right: 20,
-    background: "#22c55e",
-    color: "white",
-    padding: "12px 20px",
-    borderRadius: "10px",
-    boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
-    zIndex: 9999
-  }}>
-    {mensaje}
-  </div>
-)}
+        <div style={{
+          position: "fixed",
+          top: 20,
+          right: 20,
+          background:
+            mensaje.includes("incorrecto") || mensaje.includes("Error") || mensaje.includes("borrado")
+            ? "#c62828"
+            : "#16a34a",
+          color: "white",
+          padding: "16px 24px",
+          borderRadius: "12px",
+          zIndex: 999999,
+          fontWeight: "bold",
+          textAlign: "center"
+        }}>
+          {mensaje}
+        </div>
+      )}
+
   {imagenAbierta && (
     <div
       onClick={() => setImagenAbierta(null)}
@@ -1309,7 +1452,14 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
           <>
             <div style={estilos.card}>
               <h3>👤 Historial individual</h3>
-              <Campo label="Trabajador" value={personaHistorial} setValue={setPersonaHistorial} options={trabajadores} />
+              {usuarioActual?.rol !== "empleado" && (
+                <Campo
+                  label="Trabajador"
+                  value={personaHistorial}
+                  setValue={setPersonaHistorial}
+                  options={personasDisponiblesPersonal.map((e: any) => e.nombre)}
+                />
+              )}
 
               <p>Total acumulado: <strong>{totalPersona}</strong> pts</p>
               <p>Promedio: <strong>{promedioPersona}</strong> pts</p>
@@ -1332,13 +1482,13 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
             </div>
 
             <div style={estilos.card}>
-              <h3>📋 Registros de {personaHistorial}</h3>
+              <h3>📋 Registros de {personaVisible}</h3>
               {registrosPersona.length === 0 ? (
                 <p>Sin registros todavía.</p>
               ) : (
                 registrosPersona.map((r) => (
                   <div key={r.id} style={{ marginBottom: 14, borderBottom: "1px solid #64748b", paddingBottom: 10 }}>
-                    <strong>{r.fecha}</strong><br />
+                    <strong>{String(r.fecha).split(",")[0]}</strong><br />
                     Evaluador: {r.evaluador}<br />
                     {r.turno} - {r.puesto}<br />
                     Puntos: <strong>{r.puntos}</strong><br />
@@ -1374,7 +1524,14 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                         ))}
                       </div>
                     )}
-                    <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>Borrar este registro</button>
+                    {esAdmin && (
+                      <button
+                        style={estilos.dangerButton}
+                        onClick={() => borrarRegistro(r.id)}
+                      >
+                        Borrar este registro
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -1383,97 +1540,69 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
         )}
 
         {pantalla === "manuel" && (
-          <>
-            <div style={estilos.card}>
-              <h3>🧑‍🍳 Manuel</h3>
-              <p>El historial se puede ver, pero la evaluación está protegida con PIN.</p>
+          <div style={estilos.card}>
+            <h3>👨‍🍳 Desempeño supervisor</h3>
+            <p>Evaluación interna del supervisor de cocina.</p>
 
-              {!manuelDesbloqueado ? (
-                <>
-                  <input
-                    type="password"
-                    placeholder="PIN de Steven"
-                    value={pinIntroducido}
-                    onChange={(e) => setPinIntroducido(e.target.value)}
-                    style={estilos.input}
-                  />
-                  <button style={{ ...estilos.button, width: "100%" }} onClick={entrarManuel}>
-                    Desbloquear evaluación
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    style={{ ...estilos.dangerButton, background: "#f97316" }}
-                    onClick={() => setManuelDesbloqueado(false)}
-                  >
-                    Bloquear sección Manuel
-                  </button>
+            <label>Supervisor evaluado</label>
+            <select
+              value={manuel.nombre}
+              onChange={(e) => setManuel({ ...manuel, nombre: e.target.value })}
+              style={estilos.input}
+            >
+              <option value="">Selecciona supervisor</option>
+              {empleadosAdmin
+                .filter((e: any) => e.activo && e.rol === "supervisor")
+                .map((e: any) => (
+                  <option key={e.id} value={e.nombre}>
+                    {e.nombre}
+                  </option>
+                ))}
+              </select>
 
-                  {[
-                    ["Control del sistema", "controlSistema"],
-                    ["Supervisión real", "supervision"],
-                    ["Liderazgo", "liderazgo"],
-                    ["Justicia evaluando", "justicia"],
-                    ["Resultado del turno", "resultadoTurno"],
-                    ["Pedidos y control de stock", "pedidosStock"],
-                    ["Revisión app / PC", "revisionAppPc"],
-                  ].map(([label, key]: any) => (
-                    <div key={key} style={{ marginBottom: 16 }}>
-                      <label>{label}: {manuel[key]}/10</label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="10"
-                        value={manuel[key]}
-                        onChange={(e) => setManuel({ ...manuel, [key]: Number(e.target.value) })}
-                        style={{ width: "100%" }}
-                      />
-                    </div>
-                  ))}
+            {[
+              ["Control del sistema", "controlSistema"],
+              ["Supervisión real", "supervision"],
+              ["Liderazgo", "liderazgo"],
+              ["Justicia evaluando", "justicia"],
+              ["Resultado del turno", "resultadoTurno"],
+              ["Pedidos y control de stock", "pedidosStock"],
+              ["APPCC", "appcc"],
+              ["Comunicación con el equipo", "comunicacion"],
+              ["Resolución de problemas", "resolucion"],
+              ["Organización del turno", "organizacion"],
+            ].map(([label, key]: any) => (
+              <div key={key} style={{ marginBottom: 16 }}>
+                <label>{label}: {manuel[key] ?? 5}/10</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  value={manuel[key] ?? 5}
+                  onChange={(e) =>
+                    setManuel({ ...manuel, [key]: Number(e.target.value) })
+                  }
+                  style={{ width: "100%" }}
+                />
+              </div>
+            ))}
 
-                  <label>Notas</label>
-                  <textarea
-                    value={manuel.notas}
-                    onChange={(e) => setManuel({ ...manuel, notas: e.target.value })}
-                    style={{ ...estilos.input, minHeight: 90 }}
-                  />
+            <label>Notas</label>
+            <textarea
+              value={manuel.notas}
+              onChange={(e) => setManuel({ ...manuel, notas: e.target.value })}
+              style={{ ...estilos.input, minHeight: 90 }}
+            />
 
-                  <h2>⭐ Total Manuel: {totalManuel}/70</h2>
-                  <button style={{ ...estilos.button, width: "100%" }} onClick={guardarEvaluacionManuel}>
-                    Guardar evaluación Manuel
-                  </button>
-                </>
-              )}
-            </div>
+            <h2>⭐ Total supervisor: {totalManuel}/100</h2>
 
-            <div style={estilos.card}>
-              <h3>📋 Historial Manuel</h3>
-
-              {manuelDesbloqueado && (
-                <button style={estilos.dangerButton} onClick={borrarTodoManuel}>
-                  Borrar TODO historial Manuel
-                </button>
-              )}
-
-              {evaluacionesManuel.map((e) => (
-                <div key={e.id} style={{ marginBottom: 14, borderBottom: "1px solid #64748b", paddingBottom: 10 }}>
-                  <strong>{e.fecha}</strong><br />
-                  Total: {e.total}/70<br />
-                  Control: {e.controlSistema} | Supervisión: {e.supervision} | Liderazgo: {e.liderazgo}<br />
-                  Justicia: {e.justicia} | Resultado: {e.resultadoTurno}<br />
-                  Pedidos/stock: {e.pedidosStock ?? 0} | App/PC: {e.revisionAppPc ?? 0}<br />
-                  Nota: {e.notas || "Sin nota"}<br />
-
-                  {manuelDesbloqueado && (
-                    <button style={estilos.dangerButton} onClick={() => borrarEvaluacionManuel(e.id)}>
-                      Borrar esta evaluación
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
+            <button
+              style={{ ...estilos.button, width: "100%" }}
+              onClick={guardarEvaluacionManuel}
+            >
+              Guardar evaluación supervisor
+            </button>
+          </div>
         )}
 
         {pantalla === "historial" && (
@@ -1484,7 +1613,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
               Borrar TODO historial equipo
             </button>
 
-            {registros.map((r) => (
+            {registrosOrdenados.map((r) => (
               <div key={r.id} style={{ marginBottom: 14, borderBottom: "1px solid #64748b", paddingBottom: 10 }}>
                 <div
                   style={{
@@ -1496,7 +1625,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                   }}
                 >
                   <div style={{ flex: "1 1 260px" }}>
-                    <strong>{r.fecha}</strong><br />
+                    <strong>{String(r.fecha).split(",")[0]}</strong><br />
                     Evaluador: {r.evaluador}<br />
                     {r.trabajador} - {r.turno} - {r.puesto}<br />
                     Personas: {r.personas} | Venta: {r.rendimiento}<br />
@@ -1533,8 +1662,15 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                     </div>
                   )}
                 </div>
-                
-                <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>Borrar este registro</button>
+
+                {(
+                  usuarioActual?.rol === "admin" ||
+                  fechaRegistro(r.fecha) >= inicioSemanaActual()
+                ) && (
+                  <button style={estilos.dangerButton} onClick={() => borrarRegistro(r.id)}>
+                    Borrar este registro
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -1628,30 +1764,62 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
             </div>
           ))}
 
-            <h3>🔒 Cambiar PIN de Manuel</h3>
-            <p style={{ opacity: 0.75 }}>PIN actual por defecto: 1234. Cámbialo por uno privado.</p>
-            <input
-              type="password"
-              placeholder="Nuevo PIN"
-              value={nuevoPin}
-              onChange={(e) => setNuevoPin(e.target.value)}
-              style={estilos.input}
-            />
-            <button style={{ ...estilos.button, width: "100%" }} onClick={cambiarPin}>
-              Guardar nuevo PIN
-            </button>
           </div>
         )}
-      </div>
 
       <div style={estilos.nav}>
-        <button style={estilos.navButton} onClick={() => setPantalla("registro")}>📝<br />Registro</button>
-        <button style={estilos.navButton} onClick={() => setPantalla("ranking")}>🏆<br />Ranking</button>
-        <button style={estilos.navButton} onClick={() => setPantalla("personal")}>👤<br />Persona</button>
-        <button style={estilos.navButton} onClick={() => setPantalla("manuel")}>🧑‍🍳<br />Manuel</button>
-        <button style={estilos.navButton} onClick={() => setPantalla("historial")}>📋<br />Historial</button>
-        <button style={estilos.navButton} onClick={() => setPantalla("ajustes")}>⚙️<br />Ajustes</button>
+
+        {(esAdmin || esSupervisor) && (
+          <button
+            style={estilos.navButton}
+            onClick={() => setPantalla("registro")}
+          >
+            Registro
+          </button>
+        )}
+
+        <button
+          style={estilos.navButton}
+          onClick={() => setPantalla("ranking")}
+        >
+          Ranking
+        </button>
+
+        <button
+          style={estilos.navButton}
+          onClick={() => setPantalla("personal")}
+        >
+          Personal
+        </button>
+
+        {(esAdmin || esSupervisor) && (
+          <button
+            style={estilos.navButton}
+            onClick={() => setPantalla("historial")}
+          >
+            Historial
+          </button>
+        )}
+
+        {esAdmin && (
+          <button
+            style={estilos.navButton}
+            onClick={() => setPantalla("manuel")}
+          >
+            Supervisor
+          </button>
+        )}
+
+        {esAdmin && (
+          <button
+            style={estilos.navButton}
+            onClick={() => setPantalla("ajustes")}
+          >
+            Ajustes
+          </button>
+        )}
       </div>
+        </div>
     </div>
   );
 }
