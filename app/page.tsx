@@ -142,6 +142,7 @@ export default function App() {
   const hoyInput = new Date().toISOString().split("T")[0];
   const [fechaEvaluacion, setFechaEvaluacion] = useState(hoyInput);
   const [fechaSemanaHistorial, setFechaSemanaHistorial] = useState(hoyInput);
+  const [fechaSemanaRanking, setFechaSemanaRanking] = useState(hoyInput);
   const [fechaMesHistorial, setFechaMesHistorial] = useState(hoyInput);
 
   const [evaluador, setEvaluador] = useState("Steven");
@@ -196,13 +197,16 @@ export default function App() {
     return urls
   }
 
-  const [puntos, setPuntos] = useState(0);
   const [registros, setRegistros] = useState<Registro[]>([]);
   async function cargarDatos() {
     const { data, error } = await supabase
       .from("evaluaciones_equipo")
       .select("*")
       .order("created_at", { ascending: false })
+
+    console.log("ERROR EVALUACIONES EQUIPO:", error);
+    console.log("DATA EVALUACIONES EQUIPO:", data);
+    console.log("DATA EVALUACIONES EQUIPO COMPLETA:", JSON.stringify(data, null, 2));
 
     if (error) {
       console.error("Error cargando datos:", error)
@@ -290,8 +294,16 @@ export default function App() {
       .select("*")
       .order("nombre", { ascending: true })
 
+      console.log("ERROR EMPLEADOS:", error);
+      console.log("DATA EMPLEADOS:", data);
+      console.log("DATA EMPLEADOS COMPLETA:", JSON.stringify(data, null, 2));
+
     if (error) {
       console.error("Error cargando empleados:", error)
+      console.log("NOMBRES FINAL:", nombres);
+      console.log("EMPLEADOS ADMIN FINAL:", data);
+      console.log("NOMBRES FINAL:", nombres);
+      console.log("EMPLEADOS ADMIN FINAL:", data);
       return
     }
 
@@ -306,10 +318,15 @@ export default function App() {
   }
 
   useEffect(() => {
-    cargarDatos()
-    cargarEvaluacionesSupervisor()
-    cargarEmpleados()
-  }, [])
+    console.log("SE EJECUTÓ USEEFFECT");
+    cargarEmpleados();
+    cargarDatos();
+    cargarEvaluacionesSupervisor();
+    
+    if (pantalla !== "registro") {
+      window.scrollTo(0, 0);
+    }
+  }, [pantalla]);
 
   async function agregarEmpleado() {
     const nombreLimpio = nuevoEmpleado.trim()
@@ -469,30 +486,11 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
 
     const total = Math.round(base * multiTurno * multiPuesto + extra);
     return Math.max(0, total);
+
   }
 
-  useEffect(() => {
-    setPuntos(calcular());
-  }, [
-    trabajador,
-    turno,
-    puesto,
-    personas,
-    rendimiento,
-    limpieza,
-    areaRellena,
-    tareasPuesto,
-    calidad,
-    equipo,
-    actitud,
-    puntualidad,
-    uniformidad,
-    rotacion,
-    descongelacion,
-    transicion,
-    tareasExtra,
-  ]);
-  
+  const puntos = calcular();
+
   async function guardar() {
   const imagenesUrls = await subirImagenesNota()  
   const nuevo: Registro = {
@@ -752,6 +750,13 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     return `${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}`;
   };
 
+  const textoSemanaRanking = () => {
+    const inicio = new Date(inicioSemanaDeFecha(fechaSemanaRanking));
+    const fin = new Date(finSemanaDeFecha(fechaSemanaRanking));
+
+    return `${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}`;
+  };
+
   const textoMesSeleccionado = () => {
     const d = new Date(fechaMesHistorial);
 
@@ -761,28 +766,33 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     });
   };
 
+  const cambiarSemanaRanking = (dias: number) => {
+    const d = new Date(fechaSemanaRanking);
+    d.setDate(d.getDate() + dias);
+    setFechaSemanaRanking(d.toISOString().split("T")[0]);
+  };
+
   const cambiarSemanaHistorial = (dias: number) => {
     const d = new Date(fechaSemanaHistorial);
     d.setDate(d.getDate() + dias);
     setFechaSemanaHistorial(d.toISOString().split("T")[0]);
   };
 
-  const cambiarMesHistorial = (meses: number) => {
-    const d = new Date(fechaMesHistorial);
+  const registrosSemana = registros
+    .filter((r) => {
+      const time = r.timestamp || new Date(r.fecha).getTime()
 
-    d.setMonth(d.getMonth() + meses);
+      return (
+        time >= inicioSemanaDeFecha(fechaSemanaHistorial) &&
+        time <= finSemanaDeFecha(fechaSemanaHistorial)
+      )
+    })
+    .sort((a, b) => {
+      const timeA = a.timestamp || new Date(a.fecha).getTime()
+      const timeB = b.timestamp || new Date(b.fecha).getTime()
 
-    setFechaMesHistorial(d.toISOString().split("T")[0]);
-  };
-
-  const registrosSemana = registros.filter((r) => {
-    const time = r.timestamp || new Date(r.fecha).getTime();
-
-    return (
-      time >= inicioSemanaDeFecha(fechaSemanaHistorial) &&
-      time <= finSemanaDeFecha(fechaSemanaHistorial)
-    );
-  });
+      return timeB - timeA
+    })
 
   const finMesDeFecha = (fecha: string) => {
     const d = new Date(fecha);
@@ -842,7 +852,16 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
 
   const rankingSemana = trabajadores
     .map((nombre) => {
-      const regs = registrosSemana.filter((r) => r.trabajador === nombre);
+      const regs = registros
+          .filter((r) => {
+            const time = r.timestamp || new Date(r.fecha).getTime()
+
+            return (
+              time >= inicioSemanaDeFecha(fechaSemanaRanking) &&
+              time <= finSemanaDeFecha(fechaSemanaRanking) &&
+              r.trabajador === nombre
+            )
+          })
       const total = regs.reduce((acc, r) => acc + r.puntos, 0);
       const promedio = regs.length ? Math.round((total / regs.length) * 10) / 10 : 0;
       return { nombre, total, promedio, evaluaciones: regs.length };
@@ -1083,7 +1102,17 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     return (
       <div style={{ marginBottom: 14 }}>
         <label>{label}</label>
-        <select style={estilos.input} value={value} onChange={(e) => setValue(e.target.value)}>
+        <select
+          style={estilos.input}
+          value={value}
+          onChange={(e) => {
+            const scrollY = window.scrollY;
+            setValue(e.target.value);
+            requestAnimationFrame(() => {
+              window.scrollTo(0, scrollY);
+            });
+          }}
+        >
           {options.map((op: string) => <option key={op}>{op}</option>)}
         </select>
       </div>
@@ -1352,19 +1381,19 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
               <h3>🏆 Ranking semanal</h3>
 
               <p className="text-sm opacity-70 mb-2">
-                Semana: {textoSemanaSeleccionada()}
+                Semana: {textoSemanaRanking()}
               </p>
 
               <div className="flex items-center justify-between mb-3">
                 <button
-                  onClick={() => cambiarSemanaHistorial(-7)}
+                  onClick={() => cambiarSemanaRanking(-7)}
                   className="bg-zinc-800 px-3 py-1 rounded-lg"
                 >
                   ← Semana anterior
                 </button>
 
                 <button
-                  onClick={() => cambiarSemanaHistorial(7)}
+                  onClick={() => cambiarSemanaRanking(7)}
                   className="bg-zinc-800 px-3 py-1 rounded-lg"
                 >
                   Semana siguiente →
@@ -1375,8 +1404,8 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
                 <label>Ver semana de:</label>
                 <input
                   type="date"
-                  value={fechaSemanaHistorial}
-                  onChange={(e) => setFechaSemanaHistorial(e.target.value)}
+                  value={fechaSemanaRanking}
+                  onChange={(e) => setFechaSemanaRanking(e.target.value)}
                   style={estilos.input}
                 />
               </div>
@@ -1676,12 +1705,49 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
         {pantalla === "historial" && (
           <div style={estilos.card}>
             <h3>📋 Historial equipo</h3>
+              <div style={estilos.card}>
+              <h3>Semana del historial</h3>
+
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <button
+                    className="bg-zinc-800 px-3 py-1 rounded-lg"
+                    onClick={() => cambiarSemanaHistorial(-7)}
+                >
+                  ← Semana anterior
+                </button>
+
+                <button
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                  onClick={() => cambiarSemanaHistorial(7)}
+                >
+                  Semana siguiente →
+                </button>
+              </div>
+
+              <label>Ver semana de:</label>
+
+              <input
+                type="date"
+                value={fechaSemanaHistorial}
+                onChange={(e) => setFechaSemanaHistorial(e.target.value)}
+                style={estilos.input}
+              />
+            </div>
+            </div>
 
             <button style={estilos.dangerButton} onClick={borrarTodoEquipo}>
               Borrar TODO historial equipo
             </button>
 
-            {registrosOrdenados.map((r) => (
+            {registrosSemana.map((r) => (
               <div key={r.id} style={{ marginBottom: 14, borderBottom: "1px solid #64748b", paddingBottom: 10 }}>
                 <div
                   style={{
