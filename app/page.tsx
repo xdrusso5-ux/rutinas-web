@@ -128,6 +128,7 @@ export default function App() {
   }
 
   const [pantalla, setPantalla] = useState("ranking");
+  const [personalHistorial, setPersonalHistorial] = useState("");
   const [tema, setTema] = useState("oscuro");
   const [usuarioActual, setUsuarioActual] = useState<any>(null);
   const esAdmin = usuarioActual?.rol === "admin"
@@ -231,8 +232,12 @@ export default function App() {
 
   if (data) {
     const formateados = data.map((item: any) => ({
-      ...item.data,
+      ...item.datos,
       id: String(item.id),
+      fecha: item.fecha,
+      total: item.total,
+      notas: item.notas,
+      nombre: item.nombre,
     }))
 
     setEvaluacionesManuel(formateados)
@@ -556,26 +561,40 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
 }
 
   async function guardarEvaluacionManuel() {
+    if (!manuel.nombre) {
+      mostrarMensaje("❌ Falta seleccionar supervisor");
+      return;
+    }
+
     const total =
-      Number(manuel.controlSistema) +
-      Number(manuel.supervision) +
-      Number(manuel.liderazgo) +
-      Number(manuel.justicia) +
-      Number(manuel.resultadoTurno) +
-      Number(manuel.pedidosStock) +
-      Number(manuel.revisionAppPc);
+      Number(manuel.controlSistema ?? 5) +
+      Number(manuel.supervision ?? 5) +
+      Number(manuel.liderazgo ?? 5) +
+      Number(manuel.justicia ?? 5) +
+      Number(manuel.resultadoTurno ?? 5) +
+      Number(manuel.pedidosStock ?? 5) +
+      Number(manuel.appcc ?? 5) +
+      Number(manuel.comunicacion ?? 5) +
+      Number(manuel.resolucion ?? 5) +
+      Number(manuel.organizacion ?? 5);
 
     const nueva: EvaluacionManuel = {
       id: crearId(),
+      nombre: manuel.nombre,
       fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
       timestamp: new Date(fechaEvaluacion + "T12:00:00").getTime(),
-      controlSistema: Number(manuel.controlSistema),
-      supervision: Number(manuel.supervision),
-      liderazgo: Number(manuel.liderazgo),
-      justicia: Number(manuel.justicia),
-      resultadoTurno: Number(manuel.resultadoTurno),
-      pedidosStock: Number(manuel.pedidosStock),
-      revisionAppPc: Number(manuel.revisionAppPc),
+
+      controlSistema: Number(manuel.controlSistema ?? 5),
+      supervision: Number(manuel.supervision ?? 5),
+      liderazgo: Number(manuel.liderazgo ?? 5),
+      justicia: Number(manuel.justicia ?? 5),
+      resultadoTurno: Number(manuel.resultadoTurno ?? 5),
+      pedidosStock: Number(manuel.pedidosStock ?? 5),
+      appcc: Number(manuel.appcc ?? 5),
+      comunicacion: Number(manuel.comunicacion ?? 5),
+      resolucion: Number(manuel.resolucion ?? 5),
+      organizacion: Number(manuel.organizacion ?? 5),
+
       notas: manuel.notas,
       total,
     };
@@ -585,9 +604,10 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
   .insert([
     {
       fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
-      total: total,
+      total,
+      nombre: manuel.nombre,
       notas: manuel.notas,
-      data: nueva,
+      datos: nueva,
     },
   ])
   .select()
@@ -905,27 +925,46 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     return new Date(valor).getTime();
   }
 
-  const registrosPersona = registros
-    .filter((r) => r.trabajador === personaVisible)
-    .sort((a, b) => {
-      return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
-    });
+  const registrosEquipoPersona = registros.filter(
+    (r: any) => r.trabajador === personaHistorial
+  );
+
+  const registrosSupervisorPersona = evaluacionesManuel.filter(
+    (r: any) => r.nombre === personaHistorial
+  );
+
+  const registrosPersona = [
+    ...registrosEquipoPersona,
+    ...registrosSupervisorPersona,
+  ].sort((a: any, b: any) => {
+    return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
+  });
+
+  const esHistorialSupervisor =
+  registrosSupervisorPersona.length > 0 && registrosEquipoPersona.length === 0;
 
   const registrosOrdenados = [...registros].sort((a, b) => {
     return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
   });
 
-  const totalPersona = registrosPersona.reduce((acc, r) => acc + r.puntos, 0);
+  const totalPersona = registrosPersona.reduce(
+    (acc, r: any) => acc + Number(r.puntos ?? r.total ?? 0),
+    0
+  );
   const promedioPersona = registrosPersona.length
     ? Math.round((totalPersona / registrosPersona.length) * 10) / 10
     : 0;
 
   const mejorRegistro = registrosPersona.length
-    ? registrosPersona.reduce((max, r) => (r.puntos > max.puntos ? r : max), registrosPersona[0])
+    ? registrosPersona.reduce((max: any, r: any) =>
+        Number(r.puntos ?? r.total ?? 0) > Number(max.puntos ?? max.total ?? 0) ? r : max
+      )
     : null;
 
   const peorRegistro = registrosPersona.length
-    ? registrosPersona.reduce((min, r) => (r.puntos < min.puntos ? r : min), registrosPersona[0])
+    ? registrosPersona.reduce((min: any, r: any) =>
+        Number(r.puntos ?? r.total ?? 0) < Number(min.puntos ?? min.total ?? 0) ? r : min
+      )
     : null;
 
   function contarErrores(campo: keyof Registro, valorMalo: string) {
@@ -944,12 +983,12 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
 
   const ultimosTres = registrosPersona.slice(0, 3);
   const promedioUltimosTres = ultimosTres.length
-    ? Math.round((ultimosTres.reduce((acc, r) => acc + r.puntos, 0) / ultimosTres.length) * 10) / 10
+    ? Math.round((ultimosTres.reduce((acc, r: any) => acc + Number(r.puntos ?? r.total ?? 0), 0) / ultimosTres.length) * 10) / 10
     : 0;
 
   const anterioresTres = registrosPersona.slice(3, 6);
   const promedioAnterioresTres = anterioresTres.length
-    ? Math.round((anterioresTres.reduce((acc, r) => acc + r.puntos, 0) / anterioresTres.length) * 10) / 10
+    ? Math.round((anterioresTres.reduce((acc, r: any) => acc + Number(r.puntos ?? r.total ?? 0), 0) / anterioresTres.length) * 10) / 10
     : 0;
 
   let tendencia = "Sin datos suficientes";
@@ -1466,10 +1505,11 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
               <p>Evaluaciones: <strong>{registrosPersona.length}</strong></p>
               <p>Tendencia: <strong>{tendencia}</strong></p>
 
-              {mejorRegistro && <p>Mejor registro: <strong>{mejorRegistro.puntos}</strong> pts ({mejorRegistro.puesto})</p>}
-              {peorRegistro && <p>Peor registro: <strong>{peorRegistro.puntos}</strong> pts ({peorRegistro.puesto})</p>}
+              <p>Mejor registro:<strong>{mejorRegistro?.puntos ?? mejorRegistro?.total ?? 0}</strong> pts</p>
+              <p>Peor registro:<strong>{peorRegistro?.puntos ?? peorRegistro?.total ?? 0}</strong> pts</p>
             </div>
 
+          {!esHistorialSupervisor && (
             <div style={estilos.card}>
               <h3>⚠️ Errores repetidos</h3>
               {erroresPersona.length === 0 ? (
@@ -1480,22 +1520,45 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                 ))
               )}
             </div>
+          )}
 
             <div style={estilos.card}>
-              <h3>📋 Registros de {personaVisible}</h3>
+              <h3>📋 Registros de: {personaHistorial}</h3>
               {registrosPersona.length === 0 ? (
                 <p>Sin registros todavía.</p>
               ) : (
-                registrosPersona.map((r) => (
+                registrosPersona.map((r) => {
+                  const esSupervisor = r.controlSistema !== undefined;
+
+                  return (
                   <div key={r.id} style={{ marginBottom: 14, borderBottom: "1px solid #64748b", paddingBottom: 10 }}>
                     <strong>{String(r.fecha).split(",")[0]}</strong><br />
-                    Evaluador: {r.evaluador}<br />
-                    {r.turno} - {r.puesto}<br />
-                    Puntos: <strong>{r.puntos}</strong><br />
-                    Limpieza: {r.limpieza} | Área: {r.areaRellena} | Tareas: {r.tareasPuesto}<br />
-                    Calidad: {r.calidad} | Equipo: {r.equipo} | Actitud: {r.actitud} | Uniformidad: {r.uniformidad}<br />
-                    Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
-                    Notas: {r.notas || "Sin nota"}<br />
+                    {esSupervisor ? (
+                      <>
+                        Puntos: <strong>{r.total}</strong>/100<br />
+                        Control sistema: {r.controlSistema}/10<br />
+                        Supervisión: {r.supervision}/10<br />
+                        Liderazgo: {r.liderazgo}/10<br />
+                        Justicia: {r.justicia}/10<br />
+                        Resultado turno: {r.resultadoTurno}/10<br />
+                        Pedidos/stock: {r.pedidosStock}/10<br />
+                        APPCC: {r.appcc}/10<br />
+                        Comunicación: {r.comunicacion}/10<br />
+                        Resolución: {r.resolucion}/10<br />
+                        Organización: {r.organizacion}/10<br />
+                        Notas: {r.notas || "Sin nota"}<br />
+                      </>
+                    ) : (
+                      <>
+                        Evaluador: {r.evaluador}<br />
+                        {r.turno} - {r.puesto}<br />
+                        Puntos: <strong>{r.puntos}</strong><br />
+                        Limpieza: {r.limpieza} | Área: {r.areaRellena} | Tareas: {r.tareasPuesto}<br />
+                        Calidad: {r.calidad} | Equipo: {r.equipo} | Actitud: {r.actitud} | Uniformidad: {r.uniformidad}<br />
+                        Extras: {(r.tareasExtra?.length ?? 0) > 0 ? r.tareasExtra?.join(", ") : "Ninguna"}<br />
+                        Notas: {r.notas || "Sin nota"}<br />
+                      </>
+                    )}
                     {r.imagenes?.length > 0 && (
                       <div
                         style={{
@@ -1533,11 +1596,12 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                       </button>
                     )}
                   </div>
-                ))
-              )}
-            </div>
-          </>
-        )}
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
 
         {pantalla === "manuel" && (
           <div style={estilos.card}>
