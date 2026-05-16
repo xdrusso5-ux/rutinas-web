@@ -130,7 +130,11 @@ export default function App() {
   const [pantalla, setPantalla] = useState("ranking");
   const [personalHistorial, setPersonalHistorial] = useState("");
   const [tema, setTema] = useState("oscuro");
+  const [mostrarConfirmacionPublicar, setMostrarConfirmacionPublicar] = useState(false)
   const [usuarioActual, setUsuarioActual] = useState<any>(null);
+  const [pinActualCambio, setPinActualCambio] = useState("");
+  const [pinNuevoCambio, setPinNuevoCambio] = useState("");
+  const [pinNuevoConfirmar, setPinNuevoConfirmar] = useState("");
   const esAdmin = usuarioActual?.rol === "admin"
   const esSupervisor = usuarioActual?.rol === "supervisor"
   const esEmpleado = usuarioActual?.rol === "empleado"
@@ -223,6 +227,8 @@ export default function App() {
     }
   }
 
+  const [rankingsPublicados, setRankingsPublicados] = useState<any[]>([]);
+
   async function cargarEvaluacionesSupervisor() {
   const { data, error } = await supabase
     .from("evaluaciones_supervisor")
@@ -248,6 +254,66 @@ export default function App() {
   }
 }
 
+  async function cargarRankingsPublicados() {
+    const { data, error } = await supabase
+      .from("rankings_publicados")
+      .select("*")
+      .order("semana_inicio", { ascending: false })
+
+    console.log("ERROR RANKINGS PUBLICADOS:", error);
+    console.log("DATA RANKINGS PUBLICADOS:", data);
+
+    if (error) {
+      console.error("Error cargando rankings publicados:", error)
+      return
+    }
+
+    setRankingsPublicados(data || [])
+  }
+
+  async function publicarRanking() {
+    try {
+      const fechaBase = new Date(fechaSemanaRanking);
+      const inicioSemana = new Date(fechaBase);
+      inicioSemana.setDate(fechaBase.getDate() - ((fechaBase.getDay() + 6) % 7));
+
+      const finSemana = new Date(inicioSemana);
+      finSemana.setDate(inicioSemana.getDate() + 6);
+      
+      const rankingActual = rankingSemana.map((item: any, index: number) => ({
+        posicion: index + 1,
+        nombre: item.nombre,
+        total: item.total,
+        promedio: item.promedio,
+        evaluaciones: item.evaluaciones,
+      }))
+
+      console.log("RANKING A PUBLICAR:", rankingActual);
+      console.log("SEMANA A PUBLICAR:", inicioSemana.toISOString().split("T")[0], finSemana.toISOString().split("T")[0]);
+
+      const { error } = await supabase
+        .from("rankings_publicados")
+        .insert({
+          semana_inicio: inicioSemana.toISOString().split("T")[0],
+          semana_fin: finSemana.toISOString().split("T")[0],
+          data: rankingActual,
+          publicado_por: nombreLogin,
+        })
+
+      if (error) {
+        console.error("ERROR PUBLICANDO RANKING:", error)
+        console.log("ERROR COMPLETO:", JSON.stringify(error, null, 2))
+        mostrarMensaje("Error publicando ranking")
+        return
+      }
+
+      mostrarMensaje("Ranking publicado")
+    } catch (err) {
+      console.error(err)
+      mostrarMensaje("Error inesperado")
+    }
+  }
+
   async function iniciarSesion() {
     const empleado = empleadosAdmin.find(
       (e: any) =>
@@ -265,7 +331,15 @@ export default function App() {
     setSesionIniciada(true);
 
     if (empleado.rol === "empleado") {
-      setPantalla("ranking")
+      const semanaPasada = new Date();
+      semanaPasada.setDate(semanaPasada.getDate() - 7);
+
+      const year = semanaPasada.getFullYear();
+      const month = String(semanaPasada.getMonth() + 1).padStart(2, "0");
+      const day = String(semanaPasada.getDate()).padStart(2, "0");
+
+      setFechaSemanaRanking(`${year}-${month}-${day}`);
+      setPantalla("ranking");
     }
 
     if (empleado.rol === "supervisor") {
@@ -286,6 +360,52 @@ export default function App() {
     setPinLogin("");
 
     mostrarMensaje("Sesión cerrada");
+  }
+
+  async function cambiarPinUsuario() {
+    if (!usuarioActual) return;
+
+    if (!pinActualCambio || !pinNuevoCambio || !pinNuevoConfirmar) {
+      mostrarMensaje("Rellena todos los campos");
+      return;
+    }
+
+    if (String(usuarioActual.pin || "") !== pinActualCambio) {
+      mostrarMensaje("El PIN actual no es correcto");
+      return;
+    }
+
+    if (pinNuevoCambio !== pinNuevoConfirmar) {
+      mostrarMensaje("El PIN nuevo no coincide");
+      return;
+    }
+
+    if (pinNuevoCambio.length < 4) {
+      mostrarMensaje("El PIN debe tener al menos 4 números");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("empleados")
+      .update({ pin: pinNuevoCambio })
+      .eq("id", usuarioActual.id);
+
+    if (error) {
+      console.error("Error cambiando PIN:", error);
+      mostrarMensaje("Error cambiando PIN");
+      return;
+    }
+
+    setUsuarioActual({
+      ...usuarioActual,
+      pin: pinNuevoCambio,
+    });
+
+    setPinActualCambio("");
+    setPinNuevoCambio("");
+    setPinNuevoConfirmar("");
+
+    mostrarMensaje("PIN cambiado correctamente");
   }
 
   async function cargarEmpleados() {
@@ -322,6 +442,7 @@ export default function App() {
     cargarEmpleados();
     cargarDatos();
     cargarEvaluacionesSupervisor();
+    cargarRankingsPublicados();
     
     if (pantalla !== "registro") {
       window.scrollTo(0, 0);
@@ -757,6 +878,13 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     return `${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}`;
   };
 
+  const textoSemanaHistorial = () => {
+    const inicio = new Date(inicioSemanaDeFecha(fechaSemanaHistorial));
+    const fin = new Date(finSemanaDeFecha(fechaSemanaHistorial));
+
+    return `${inicio.toLocaleDateString("es-ES")} - ${fin.toLocaleDateString("es-ES")}`;
+  };
+
   const textoMesSeleccionado = () => {
     const d = new Date(fechaMesHistorial);
 
@@ -773,9 +901,16 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
   };
 
   const cambiarSemanaHistorial = (dias: number) => {
-    const d = new Date(fechaSemanaHistorial);
+    const [year, month, day] = fechaSemanaHistorial.split("-").map(Number);
+    const d = new Date(year, month - 1, day);
+
     d.setDate(d.getDate() + dias);
-    setFechaSemanaHistorial(d.toISOString().split("T")[0]);
+
+    const nuevoYear = d.getFullYear();
+    const nuevoMonth = String(d.getMonth() + 1).padStart(2, "0");
+    const nuevoDay = String(d.getDate()).padStart(2, "0");
+
+    setFechaSemanaHistorial(`${nuevoYear}-${nuevoMonth}-${nuevoDay}`);
   };
 
   const registrosSemana = registros
@@ -868,6 +1003,40 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     })
     .sort((a, b) => b.total - a.total);
 
+  function fechaLocalISO(fecha: any) {
+    const d = new Date(fecha);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const inicioSemanaSeleccionada = fechaLocalISO(inicioSemanaDeFecha(fechaSemanaRanking));
+  const finSemanaSeleccionada = fechaLocalISO(finSemanaDeFecha(fechaSemanaRanking));
+
+  const rankingPublicadoSeleccionado = rankingsPublicados.find(
+    (r: any) =>
+      r.semana_inicio === inicioSemanaSeleccionada &&
+      r.semana_fin === finSemanaSeleccionada
+  );
+
+  const rankingSemanaVisible =
+    usuarioActual?.rol === "empleado"
+      ? rankingPublicadoSeleccionado
+        ? rankingPublicadoSeleccionado.data.map((r: any) => ({
+            nombre: r.nombre,
+            total: r.total ?? r.puntos ?? 0,
+            promedio: r.promedio ?? 0,
+            evaluaciones: r.evaluaciones ?? 0,
+          }))
+        : trabajadores.map((nombre) => ({
+            nombre,
+            total: 0,
+            promedio: 0,
+            evaluaciones: 0,
+          }))
+      : rankingSemana;
+
   const rankingMes = trabajadores
     .map((nombre) => {
       const regs = registrosMes.filter((r) => r.trabajador === nombre);
@@ -885,6 +1054,49 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
       return { nombre, total, promedio, evaluaciones: regs.length };
     })
     .sort((a, b) => b.total - a.total);
+
+  const rankingsPublicadosDelMes = rankingsPublicados.filter((pub: any) => {
+    const inicio = new Date(pub.semana_inicio);
+    const fechaMes = new Date(fechaMesHistorial);
+
+    return (
+      inicio.getMonth() === fechaMes.getMonth() &&
+      inicio.getFullYear() === fechaMes.getFullYear()
+    );
+  });
+
+  const sumarRankingsPublicados = (publicados: any[]) =>
+    trabajadores
+      .map((nombre) => {
+        const registros = publicados.flatMap((pub: any) => pub.data || []);
+        const regsPersona = registros.filter((r: any) => r.nombre === nombre);
+
+        const total = regsPersona.reduce(
+          (acc: number, r: any) => acc + (r.total ?? r.puntos ?? 0),
+          0
+        );
+
+        const evaluaciones = regsPersona.reduce(
+          (acc: number, r: any) => acc + (r.evaluaciones ?? 0),
+          0
+        );
+
+        const promedio =
+          evaluaciones > 0 ? Math.round((total / evaluaciones) * 10) / 10 : 0;
+
+        return { nombre, total, promedio, evaluaciones };
+      })
+      .sort((a, b) => b.total - a.total);
+
+  const rankingMesVisible =
+    usuarioActual?.rol === "empleado"
+      ? sumarRankingsPublicados(rankingsPublicadosDelMes)
+      : rankingMes;
+
+  const rankingGeneralVisible =
+    usuarioActual?.rol === "empleado"
+      ? sumarRankingsPublicados(rankingsPublicados)
+      : rankingGeneral;
 
   const oro = rankingSemana[0];
   const plata = rankingSemana[1];
@@ -952,12 +1164,24 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     (r: any) => r.nombre === personaHistorial
   );
 
+  const inicioSemanaPersonal = inicioSemanaDeFecha(fechaSemanaHistorial);
+  const finSemanaPersonal = finSemanaDeFecha(fechaSemanaHistorial);
+
   const registrosPersona = [
     ...registrosEquipoPersona,
     ...registrosSupervisorPersona,
-  ].sort((a: any, b: any) => {
-    return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
-  });
+  ]
+    .filter((r: any) => {
+      const time = r.timestamp || fechaRegistro(r.fecha || r.created_at);
+
+      return (
+        time >= inicioSemanaPersonal &&
+        time <= finSemanaPersonal
+      );
+    })
+    .sort((a: any, b: any) => {
+      return fechaRegistro(b.fecha || b.created_at) - fechaRegistro(a.fecha || a.created_at);
+    });
 
   const esHistorialSupervisor =
   registrosSupervisorPersona.length > 0 && registrosEquipoPersona.length === 0;
@@ -1410,7 +1634,16 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
                 />
               </div>
 
-              {rankingSemana.map((r, i) => (
+              {usuarioActual?.rol !== "empleado" && (
+                <button
+                  onClick={() => setMostrarConfirmacionPublicar(true)}
+                  className="bg-emerald-600 px-4 py-2 rounded-lg font-bold mb-4"
+                >
+                  Publicar ranking de esta semana
+                </button>
+              )}
+
+              {rankingSemanaVisible.map((r, i) => (
                 <div key={r.nombre} style={{ padding: 12, borderBottom: "1px solid #64748b" }}>
                   <strong>{i + 1}. {r.nombre}</strong><br />
                   Total: {r.total} pts<br />
@@ -1453,7 +1686,7 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
                 />
               </div>
 
-              {rankingMes.map((p, i) => (
+              {rankingMesVisible.map((p, i) => (
               <div
                 key={p.nombre}
                 style={{
@@ -1507,7 +1740,7 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
 
             <div style={estilos.card}>
               <h3>📊 Ranking general</h3>
-              {rankingGeneral.map((r, i) => (
+              {rankingGeneralVisible.map((r, i) => (
                 <div key={r.nombre} style={{ padding: 10, borderBottom: "1px solid #64748b" }}>
                   {i + 1}. {r.nombre} - {r.total} pts | Promedio: {r.promedio}
                 </div>
@@ -1520,6 +1753,37 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
           <>
             <div style={estilos.card}>
               <h3>👤 Historial individual</h3>
+
+              <p className="text-sm opacity-70 mb-2">
+                Semana: {textoSemanaHistorial()}
+              </p>
+
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => cambiarSemanaHistorial(-7)}
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                >
+                  ← Semana anterior
+                </button>
+
+                <button
+                  onClick={() => cambiarSemanaHistorial(7)}
+                  className="bg-zinc-800 px-3 py-1 rounded-lg"
+                >
+                  Semana siguiente →
+                </button>
+              </div>
+
+              <div style={{ marginBottom: "10px" }}>
+                <label>Ver semana de:</label>
+                <input
+                  type="date"
+                  value={fechaSemanaHistorial}
+                  onChange={(e) => setFechaSemanaHistorial(e.target.value)}
+                  style={estilos.input}
+                />
+              </div>
+
               {usuarioActual?.rol !== "empleado" && (
                 <Campo
                   label="Trabajador"
@@ -1529,13 +1793,17 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
                 />
               )}
 
-              <p>Total acumulado: <strong>{totalPersona}</strong> pts</p>
-              <p>Promedio: <strong>{promedioPersona}</strong> pts</p>
-              <p>Evaluaciones: <strong>{registrosPersona.length}</strong></p>
-              <p>Tendencia: <strong>{tendencia}</strong></p>
+              {usuarioActual?.rol !== "empleado" && (
+                <>
+                  <p>Total acumulado: <strong>{totalPersona}</strong> pts</p>
+                  <p>Promedio: <strong>{promedioPersona}</strong> pts</p>
+                  <p>Evaluaciones: <strong>{registrosPersona.length}</strong></p>
+                  <p>Tendencia: <strong>{tendencia}</strong></p>
 
-              <p>Mejor registro:<strong>{mejorRegistro?.puntos ?? mejorRegistro?.total ?? 0}</strong> pts</p>
-              <p>Peor registro:<strong>{peorRegistro?.puntos ?? peorRegistro?.total ?? 0}</strong> pts</p>
+                  <p>Mejor registro:<strong>{mejorRegistro?.puntos ?? mejorRegistro?.total ?? 0}</strong> pts</p>
+                  <p>Peor registro:<strong>{peorRegistro?.puntos ?? peorRegistro?.total ?? 0}</strong> pts</p>
+                </>
+              )}
             </div>
 
           {!esHistorialSupervisor && (
@@ -1822,6 +2090,44 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
 
             <hr style={{ margin: "20px 0" }} />
 
+            <h3>🔐 Cambiar PIN</h3>
+
+            <input
+              type="password"
+              placeholder="PIN actual"
+              value={pinActualCambio}
+              onChange={(e) => setPinActualCambio(e.target.value)}
+              style={estilos.input}
+            />
+
+            <input
+              type="password"
+              placeholder="Nuevo PIN"
+              value={pinNuevoCambio}
+              onChange={(e) => setPinNuevoCambio(e.target.value)}
+              style={estilos.input}
+            />
+
+            <input
+              type="password"
+              placeholder="Confirmar nuevo PIN"
+              value={pinNuevoConfirmar}
+              onChange={(e) => setPinNuevoConfirmar(e.target.value)}
+              style={estilos.input}
+            />
+
+            <button
+              style={{ ...estilos.button, width: "100%", marginTop: 10 }}
+              onClick={cambiarPinUsuario}
+            >
+              Cambiar PIN
+            </button>
+
+            <hr style={{ margin: "20px 0" }} />
+
+          {esAdmin && (
+            <> 
+
             <h3>👥 Gestionar empleados</h3>
 
             <input
@@ -1897,7 +2203,8 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
             </button>
             </div>
           ))}
-
+            </>
+          )}
           </div>
         )}
 
@@ -1944,7 +2251,7 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
           </button>
         )}
 
-        {esAdmin && (
+        {sesionIniciada && (
           <button
             style={estilos.navButton}
             onClick={() => setPantalla("ajustes")}
@@ -1952,6 +2259,43 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
             Ajustes
           </button>
         )}
+
+        {mostrarConfirmacionPublicar && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-[90%] max-w-md shadow-2xl">
+
+              <h2 className="text-xl font-bold text-white mb-2">
+                Publicar ranking
+              </h2>
+
+              <p className="text-zinc-300 mb-6">
+                ¿Seguro que quieres publicar el ranking de esta semana?
+              </p>
+
+              <div className="flex gap-3 justify-end">
+
+                <button
+                  onClick={() => setMostrarConfirmacionPublicar(false)}
+                  className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  onClick={async () => {
+                  setMostrarConfirmacionPublicar(false)
+                  await publicarRanking()
+                }}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+              >
+                Publicar
+              </button>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       </div>
         </div>
     </div>
