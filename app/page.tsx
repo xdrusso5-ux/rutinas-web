@@ -56,7 +56,7 @@ type Registro = {
   timestamp: number;
 };
 
-type EvaluacionManuel = {
+type EvaluacionSupervisor = {
   id: string;
   fecha: string;
   timestamp: number;
@@ -219,9 +219,9 @@ export default function App() {
     }
   }
 
-  async function cargarEvaluacionesManuel() {
+  async function cargarEvaluacionesSupervisor() {
   const { data, error } = await supabase
-    .from("evaluaciones_manuel")
+    .from("evaluaciones_supervisor")
     .select("*")
     .order("created_at", { ascending: false })
 
@@ -240,7 +240,7 @@ export default function App() {
       nombre: item.nombre,
     }))
 
-    setEvaluacionesManuel(formateados)
+    setEvaluacionesSupervisor(formateados)
   }
 }
 
@@ -307,7 +307,7 @@ export default function App() {
 
   useEffect(() => {
     cargarDatos()
-    cargarEvaluacionesManuel()
+    cargarEvaluacionesSupervisor()
     cargarEmpleados()
   }, [])
 
@@ -414,7 +414,7 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
     notas: "",
   });
 
-  const [evaluacionesManuel, setEvaluacionesManuel] = useState<EvaluacionManuel[]>([]);
+  const [evaluacionesSupervisor, setEvaluacionesSupervisor] = useState<EvaluacionSupervisor[]>([])
 
   function calcular() {
     let base = 0;
@@ -560,7 +560,7 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
   mostrarMensaje("Guardado en la nube ✅")
 }
 
-  async function guardarEvaluacionManuel() {
+  async function guardarEvaluacionSupervisor() {
     if (!manuel.nombre) {
       mostrarMensaje("❌ Falta seleccionar supervisor");
       return;
@@ -578,7 +578,7 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
       Number(manuel.resolucion ?? 5) +
       Number(manuel.organizacion ?? 5);
 
-    const nueva: EvaluacionManuel = {
+    const nueva: EvaluacionSupervisor = {
       id: crearId(),
       nombre: manuel.nombre,
       fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
@@ -600,7 +600,7 @@ async function eliminarEmpleadoDefinitivo(id: string, nombre: string) {
     };
 
     const { data, error } = await supabase
-  .from("evaluaciones_manuel")
+  .from("evaluaciones_supervisor")
   .insert([
     {
       fecha: new Date(fechaEvaluacion + "T12:00:00").toLocaleString(),
@@ -618,9 +618,9 @@ if (error) {
   return
 }
 
-setEvaluacionesManuel([{ ...nueva, id: data.id }, ...evaluacionesManuel]);
+setEvaluacionesSupervisor([{ ...nueva, id: data.id }, ...evaluacionesSupervisor]);
 
-mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
+mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
     setManuel({
       controlSistema: 5,
       supervision: 5,
@@ -654,22 +654,22 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
   return;
   }
 
-  async function borrarEvaluacionManuel(id: string) {
+  async function borrarEvaluacionSupervisor(id: string) {
   setConfirmacion({
-  texto: "¿Borrar solo esta evaluación de Manuel?",
+  texto: "Borrar solo esta evaluación de supervisor?",
   accion: async () => {
     const { error } = await supabase
-      .from("evaluaciones_manuel")
+      .from("evaluaciones_supervisor")
       .delete()
       .eq("id", id);
 
     if (error) {
-      alert("Error al borrar Manuel en la nube ❌: " + JSON.stringify(error));
+      alert("Error al borrar supervisor en la nube ❌:" + JSON.stringify(error));
       return;
     }
 
-    setEvaluacionesManuel(evaluacionesManuel.filter((e) => e.id !== id));
-    mostrarMensaje("Evaluación Manuel borrada de la nube ✅");
+    setEvaluacionesSupervisor(evaluacionesSupervisor.filter((e) => e.id !== id));
+    mostrarMensaje("Evaluación supervisor borrada de la nube ✅");
   }
   });
   return;
@@ -701,7 +701,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
   texto: "¿Seguro que quieres borrar TODO el historial de Manuel?",
   accion: async () => {
     const { error } = await supabase
-      .from("evaluaciones_manuel")
+      .from("evaluaciones_supervisor")
       .delete()
       .neq("id", "00000000-0000-0000-0000-000000000000");
 
@@ -710,7 +710,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
       return;
     }
 
-    setEvaluacionesManuel([]);
+    setEvaluacionesSupervisor([]);
     mostrarMensaje("Todo el historial de Manuel fue borrado de la nube ✅");
   }
   });
@@ -929,7 +929,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
     (r: any) => r.trabajador === personaHistorial
   );
 
-  const registrosSupervisorPersona = evaluacionesManuel.filter(
+  const registrosSupervisorPersona = evaluacionesSupervisor.filter(
     (r: any) => r.nombre === personaHistorial
   );
 
@@ -1590,7 +1590,11 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
                     {esAdmin && (
                       <button
                         style={estilos.dangerButton}
-                        onClick={() => borrarRegistro(r.id)}
+                        onClick={() =>
+                          esHistorialSupervisor
+                            ? borrarEvaluacionSupervisor(r.id)
+                            : borrarRegistro(r.id)
+                        }
                       >
                         Borrar este registro
                       </button>
@@ -1662,7 +1666,7 @@ mostrarMensaje("Evaluación Manuel guardada en la nube ✅")
 
             <button
               style={{ ...estilos.button, width: "100%" }}
-              onClick={guardarEvaluacionManuel}
+              onClick={guardarEvaluacionSupervisor}
             >
               Guardar evaluación supervisor
             </button>
