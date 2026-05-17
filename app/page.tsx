@@ -2240,6 +2240,15 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
           Personal
         </button>
 
+        {esEmpleado && (
+          <button
+            style={estilos.navButton}
+            onClick={() => setPantalla("ajustes")}
+          >
+            Ajustes
+          </button>
+        )}
+
         {(esAdmin || esSupervisor) && (
           <button
             style={estilos.navButton}
