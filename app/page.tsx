@@ -128,6 +128,7 @@ export default function App() {
   }
 
   const [pantalla, setPantalla] = useState("ranking");
+  const [menuMasAbierto, setMenuMasAbierto] = useState(false);
   const [personalHistorial, setPersonalHistorial] = useState("");
   const [tema, setTema] = useState("oscuro");
   const [mostrarConfirmacionPublicar, setMostrarConfirmacionPublicar] = useState(false)
@@ -1306,19 +1307,25 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
       bottom: 0,
       left: 0,
       right: 0,
-      background: esOscuro ? "#020617" : "white",
-      borderTop: esOscuro ? "1px solid #334155" : "1px solid #ddd",
       display: "flex",
       justifyContent: "space-around",
-      padding: "10px 4px",
-      zIndex: 50,
+      alignItems: "center",
+      background: "#0f172a",
+      borderTop: "1px solid #334155",
+      padding: "10px 8px",
+      zIndex: 1000,
     },
     navButton: {
+      flex: 1,
       background: "transparent",
       border: "none",
-      color: esOscuro ? "white" : "#111827",
-      fontSize: 11,
-      fontWeight: "bold",
+      color: "#ffffff",
+      fontSize: 17,
+      fontWeight: "700",
+      padding: "16px 8px",
+      minHeight: 60,
+      cursor: "pointer",
+      borderRadius: 12,
     },
   };
 
@@ -2236,7 +2243,46 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
         {(esAdmin || esSupervisor) && (
           <button
             style={estilos.navButton}
-            onClick={() => setPantalla("historial")}
+            onClick={() => {
+              console.log("CLICK MAS", !menuMasAbierto);
+              setMenuMasAbierto(!menuMasAbierto);
+            }}
+          >
+            Más
+          </button>
+        )}
+
+        {menuMasAbierto && (esAdmin || esSupervisor) && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: 90,
+              right: 16,
+              background: "#1e293b",
+              border: "1px solid #334155",
+              borderRadius: 18,
+              padding: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              zIndex: 9999,
+              minWidth: 240,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+            }}
+          >
+
+         {(esAdmin || esSupervisor) && (
+          <button
+            style={{
+              ...estilos.navButton,
+              fontSize: 18,
+              padding: "16px 20px",
+              minHeight: 56,
+            }}
+            onClick={() => {
+              setPantalla("historial")
+              setMenuMasAbierto(false)
+            }}
           >
             Historial
           </button>
@@ -2244,21 +2290,38 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
 
         {esAdmin && (
           <button
-            style={estilos.navButton}
-            onClick={() => setPantalla("manuel")}
+            style={{
+              ...estilos.navButton,
+              fontSize: 18,
+              padding: "16px 20px",
+              minHeight: 56,
+            }}
+            onClick={() => {
+              setPantalla("manuel")
+              setMenuMasAbierto(false)
+            }}
           >
             Supervisor
           </button>
         )}
 
-        {sesionIniciada && (
-          <button
-            style={estilos.navButton}
-            onClick={() => setPantalla("ajustes")}
-          >
-            Ajustes
-          </button>
-        )}
+        <button
+          style={{
+            ...estilos.navButton,
+            fontSize: 18,
+            padding: "16px 20px",
+            minHeight: 56,
+          }}
+          onClick={() => {
+            setPantalla("ajustes")
+            setMenuMasAbierto(false)
+          }}
+        >
+          Ajustes
+        </button>
+
+      </div>
+    )}
 
         {mostrarConfirmacionPublicar && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -2290,7 +2353,7 @@ mostrarMensaje("Evaluación supervisor guardada en la nube ✅")
               >
                 Publicar
               </button>
-
+      
             </div>
           </div>
         </div>
